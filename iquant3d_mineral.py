@@ -27,31 +27,31 @@ class iq3t_m():
         filelist = sorted(s for s in filepath)
         return filelist
 
-    def element_list(self,filelist):
-        f = pd.read_csv(filelist[0],dtype = "str", skiprows = [14],header= 12 ,low_memory = False)[0:1]
+    def element_list(self, filelist):
+        f = pd.read_csv(filelist[0], dtype="str", skiprows=[14], header=12, low_memory=False)[0:1]
         names = list(f.columns)
         elements = names[1:len(names)-1]
         self.elements = elements
         return elements
 
-    def imaging(self,folder,file,element,offset,length, nb_line,washout):
+    def imaging(self, folder, file, element, offset, length, nb_line, washout):
         print("Analysis of " + file + "_" + element)
         df = pd.read_csv(file, dtype="float64", skiprows=[14], header=12, low_memory=False)
         ts = offset
         line_num = 0
         merged_line = pd.DataFrame()
-        fig = plt.figure(figsize=(15,3))
+        fig = plt.figure(figsize=(15, 3))
         ax = fig.add_subplot(111)
         plt.rcParams['lines.linewidth'] = 0.3
-        plt.plot(df['Time'],df[element],color='black',linewidth=0.3)
+        plt.plot(df['Time'], df[element], color='black', linewidth=0.3)
 
         for i in range(len(df[element])):
             line_num += 1
             y = df.query("@ts <Time< (@ts + @length)")[element]
             merged_line['line'+str(line_num)] = pd.Series(list(y))
-            ax.axvspan(df.iloc[y.index[0]]["Time"],df.iloc[y.index[-1]]["Time"],color = "lightgray")
-            l = length + washout
-            ts += l
+            ax.axvspan(df.iloc[y.index[0]]["Time"], df.iloc[y.index[-1]]["Time"], color="lightgray")
+            line_length = length + washout
+            ts += line_length
             if line_num == nb_line:
                 break
 
@@ -66,28 +66,60 @@ class iq3t_m():
         plt.style.use('dark_background')
         plt.figure()
         ax = plt.subplot(111)
-        sns.heatmap(merged_line.T,cmap='jet',xticklabels=False,yticklabels=False,ax=ax,cbar=False,robust=True)
+        sns.heatmap(merged_line.T, cmap='jet', xticklabels=False, yticklabels=False, ax=ax, cbar=True, robust=True)
         plt.tight_layout()
         outname = file.split('.')[0]+'_'+element+'_mapping.png'
         plt.savefig(outname)
         plt.style.use('default')
         plt.close()
 
-    def moving(self,foler):
+    def moving(self, foler):
         dirname = self.folder+'/result'
-        if os.path.isdir(dirname) == False:os.mkdir(dirname)
-        os.system('mv '+self.folder+'/*.xlsx '+self.folder+'/result')
+        if os.path.isdir(dirname) is False:
+            os.mkdir(dirname)
+            os.system('mv '+self.folder+'/*.xlsx '+self.folder+'/result')
 
         dirname = self.folder+'/signal'
-        if os.path.isdir(dirname) == False:os.mkdir(dirname)
-        os.system('mv '+self.folder+'/*signal.pdf '+self.folder+'/signal')
+        if os.path.isdir(dirname) is False:
+            os.mkdir(dirname)
+            os.system('mv '+self.folder+'/*signal.pdf '+self.folder+'/signal')
 
         dirname = self.folder+'/mapping'
-        if os.path.isdir(dirname) == False:os.mkdir(dirname)
-        os.system('mv '+self.folder+'/*mapping.png '+self.folder+'/mapping')
+        if os.path.isdir(dirname) is False:
+            os.mkdir(dirname)
+            os.system('mv'+self.folder+'/*mapping.png '+self.folder+'/mapping')
 
-    def execlusion(self,offset,length,nb_line,washout):
+
+    def ccf(self, file, element_a, element_b):
+        df = pd.read_csv(file, dtype="float64", skiprows=[14], header=12, low_memory=False)
+        sig_a = (df[element_a] - df[element_a].mean())/(df[element_a].std(ddof = 0)*len(df[element_a]))
+        sig_b = (df[element_b] - df[element_b].mean())/df[element_b].std(ddof = 0)
+        corr = np.correlate(list(sig_a), list(sig_b))
+        return np.round(corr,decimals = 5)[0]
+
+    def ccf_table(self,file,elements):
+        list = []
+        ind, col = elements, elements
+        for i in range(len(elements)):
+            ccf_element = [np.nan]*len(elements)
+            for j in range(i,len(elements)):
+                ccf_element[j] = self.ccf(file,elements[i],elements[j])
+            list.append(ccf_element)
+        df = pd.DataFrame(list,index = ind, columns = col)
+        return df.T
+
+    def execlusion(self, offset, length, nb_line, washout):
         l = self.csv_list(self.folder)
         elements = self.element_list(l)
-        [[self.imaging(self.folder,file,i,offset = 5, length = 103,nb_line = 17,washout = 20) for i in elements] for file in l]
+        [[self.imaging(self.folder, file, i, offset=5, length=103, nb_line=17, washout=20) for i in elements] for file in l]
         self.moving(self.folder)
+
+    def print_ccf(self):
+        l = self.csv_list(self.folder)
+        elements = self.element_list(l)
+        for file in l:
+            df = self.ccf_table(file,elements)
+            cm = sns.light_palette("green", as_cmap=True)
+            df_ccf = df.corr().style.background_gradient(cmap = cm)
+            outname = file.split('.')[0]+'_ccc.html'
+            df.to_html(outname)
