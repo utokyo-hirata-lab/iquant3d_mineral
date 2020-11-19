@@ -3,6 +3,7 @@ import os
 import os.path
 import sys
 import csv
+import warnings
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -10,6 +11,9 @@ import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
 import matplotlib as mpl
 from matplotlib.ticker import ScalarFormatter
+import plotly.offline
+import plotly.graph_objects as go
+import plotly.figure_factory as ff
 
 class iq3t_m():
     def __init__(self, folder, filelist=[], elements=[], data=[],offset = 3, length = 122,nb_line = 17,washout = 30):
@@ -37,6 +41,7 @@ class iq3t_m():
     def imaging(self, folder, file, element, offset, length, nb_line, washout):
         print("Analysis of " + file + "_" + element)
         df = pd.read_csv(file, dtype="float64", skiprows=[14], header=12, low_memory=False)
+        #print(df.head(10))
         ts = offset
         line_num = 0
         merged_line = pd.DataFrame()
@@ -73,21 +78,22 @@ class iq3t_m():
         plt.style.use('default')
         plt.close()
 
-    def moving(self, foler):
+    def moving(self, folder):
         dirname = self.folder+'/result'
         if os.path.isdir(dirname) is False:
             os.mkdir(dirname)
-            os.system('mv '+self.folder+'/*.xlsx '+self.folder+'/result')
+        os.system('mv '+self.folder+'/*.xlsx '+self.folder+'/result')
 
         dirname = self.folder+'/signal'
         if os.path.isdir(dirname) is False:
             os.mkdir(dirname)
-            os.system('mv '+self.folder+'/*signal.pdf '+self.folder+'/signal')
+        os.system('mv '+self.folder+'/*signal.pdf '+self.folder+'/signal')
 
         dirname = self.folder+'/mapping'
         if os.path.isdir(dirname) is False:
             os.mkdir(dirname)
-            os.system('mv'+self.folder+'/*mapping.png '+self.folder+'/mapping')
+        os.system('mv '+self.folder+'/*mapping.png '+self.folder+'/mapping')
+        print("Complite!")
 
 
     def ccf(self, file, element_a, element_b):
@@ -95,7 +101,7 @@ class iq3t_m():
         sig_a = (df[element_a] - df[element_a].mean())/(df[element_a].std(ddof = 0)*len(df[element_a]))
         sig_b = (df[element_b] - df[element_b].mean())/df[element_b].std(ddof = 0)
         corr = np.correlate(list(sig_a), list(sig_b))
-        return np.round(corr,decimals = 5)[0]
+        return np.round(corr,decimals = 3)[0]
 
     def ccf_table(self,file,elements):
         list = []
@@ -110,16 +116,38 @@ class iq3t_m():
 
     def execlusion(self, offset, length, nb_line, washout):
         l = self.csv_list(self.folder)
+        print(l)
         elements = self.element_list(l)
-        [[self.imaging(self.folder, file, i, offset=5, length=103, nb_line=17, washout=20) for i in elements] for file in l]
+        [[self.imaging(self.folder, file, i, offset, length, nb_line, washout) for i in elements] for file in l]
         self.moving(self.folder)
+        #offset=5, length=103, nb_line=17, washout=20がデフォルト
 
     def print_ccf(self):
+        warnings.filterwarnings('ignore')
         l = self.csv_list(self.folder)
         elements = self.element_list(l)
         for file in l:
+            #plotlyを使う
+            df = self.ccf_table(file, elements)
+            #print(df)
+            fig = ff.create_annotated_heatmap(z = df.values.tolist(),x = list(df.columns),y = list(df.index),colorscale = "oranges")
+            outname = file.split('.')[0]+"_correelation_coeeficient.html"
+            fig.write_html(outname, auto_open=False)
+            fig.show()
+
+            """
+            fig = go.Figure(data = [go.Table(header = dict(values = df.columns,align = "center",font_size = 10),cells = dict(values = df.values,align = "center",font_size = 10))])
+            fig.show()
+            """
+
+            """
+            重い&色の変更がうまくいかないのでボツ
             df = self.ccf_table(file,elements)
             cm = sns.light_palette("green", as_cmap=True)
-            df_ccf = df.corr().style.background_gradient(cmap = cm)
+            df_ccf = df.corr().style.background_gradient(cmap = cm).render()
             outname = file.split('.')[0]+'_ccc.html'
-            df.to_html(outname)
+            testname = file.split('.')[0]+"_"+"test.html"
+            df.to_html(testname)
+            with open(outname,"w") as file:
+                file.write(df_ccf)
+            """
