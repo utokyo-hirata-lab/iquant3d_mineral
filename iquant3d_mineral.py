@@ -96,20 +96,21 @@ class iq3t_m():
         print("Complite!")
 
 
-    def ccf(self, file, element_a, element_b):
-        df = pd.read_csv(file, dtype="float64", skiprows=[14], header=12, low_memory=False)
+    def ccf(self, file, element_a, element_b, std, threshold):
+        data = pd.read_csv(file, dtype="float64", skiprows=[14], header=12, low_memory=False)
+        df = data[data[std] > threshold]
         sig_a = (df[element_a] - df[element_a].mean())/(df[element_a].std(ddof = 0)*len(df[element_a]))
         sig_b = (df[element_b] - df[element_b].mean())/df[element_b].std(ddof = 0)
         corr = np.correlate(list(sig_a), list(sig_b))
         return np.round(corr,decimals = 3)[0]
 
-    def ccf_table(self,file,elements):
+    def ccf_table(self,file,elements, std, threshold):
         list = []
         ind, col = elements, elements
         for i in range(len(elements)):
             ccf_element = [np.nan]*len(elements)
             for j in range(i,len(elements)):
-                ccf_element[j] = self.ccf(file,elements[i],elements[j])
+                ccf_element[j] = self.ccf(file,elements[i],elements[j], std, threshold)
             list.append(ccf_element)
         df = pd.DataFrame(list,index = ind, columns = col)
         return df.T
@@ -122,18 +123,23 @@ class iq3t_m():
         self.moving(self.folder)
         #offset=5, length=103, nb_line=17, washout=20がデフォルト
 
-    def print_ccf(self):
+    def print_ccf(self, std, threshold):
         warnings.filterwarnings('ignore')
         l = self.csv_list(self.folder)
         elements = self.element_list(l)
         for file in l:
+
             #plotlyを使う
-            df = self.ccf_table(file, elements)
+            df = self.ccf_table(file, elements, std, threshold)
             #print(df)
             fig = ff.create_annotated_heatmap(z = df.values.tolist(),x = list(df.columns),y = list(df.index),colorscale = "oranges")
             outname = file.split('.')[0]+"_correelation_coeeficient.html"
             fig.write_html(outname, auto_open=False)
             fig.show()
+
+            #matplotlib(普通の)
+
+            #seabornをつかう
 
             """
             fig = go.Figure(data = [go.Table(header = dict(values = df.columns,align = "center",font_size = 10),cells = dict(values = df.values,align = "center",font_size = 10))])
